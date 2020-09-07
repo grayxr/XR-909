@@ -1,95 +1,194 @@
-#include "XRBassDrum.h"
 #include "XRUtils.h"
+#include "XRBassDrum.h"
 #include <Arduino.h>
 
-Bass::Bass(
-  AudioSynthWaveformDc &pitchDc1,
-  AudioEffectEnvelope &pitchEnv1,
-  AudioSynthWaveformModulated &osc1,
-  AudioEffectWaveshaper &osc1waveShape,
-  AudioEffectEnvelope &osc1env1,
-  AudioAmplifier &osc1amp,
+static float CLIPPED_TRI_SHAPE[9] = {
+  -0.41275,
+  -0.39625,
+  -0.25,
+  -0.1,
+  0,
+  0.1,
+  0.25,
+  0.39625,
+  0.41275
+};
+
+BassDrum::BassDrum(
+  AudioSynthWaveformDc &dc,
+  AudioEffectEnvelope &pitchEnv,
+  AudioSynthWaveformModulated &osc,
+  AudioEffectWaveshaper &oscShaper,
+  AudioFilterStateVariable &oscFilter,
+  AudioEffectEnvelope &oscEnv,
+  AudioSynthWaveformDc &pulseDc,
+  AudioEffectEnvelope &pulseEnv,
+  AudioSynthWaveformModulated &pulseOsc,
   AudioSynthNoiseWhite &noise,
-  AudioEffectEnvelope &noiseEnv1,
+  AudioFilterStateVariable &noiseFilter,
+  AudioMixer4 &attackMixer,
+  AudioEffectEnvelope &attackEnv,
   AudioMixer4 &mainMixer
-) : pitchDc1 {pitchDc1},
-    pitchEnv1 {pitchEnv1},
-    osc1 {osc1},
-    osc1waveShape {osc1waveShape},
-    osc1env1 {osc1env1},
-    osc1amp {osc1amp},
+) : dc {dc},
+    pitchEnv {pitchEnv},
+    osc {osc},
+    oscShaper {oscShaper},
+    oscFilter {oscFilter},
+    oscEnv {oscEnv},
+    pulseDc {pulseDc},
+    pulseEnv {pulseEnv},
+    pulseOsc {pulseOsc},
     noise {noise},
-    noiseEnv1 {noiseEnv1},
+    noiseFilter {noiseFilter},
+    attackMixer {attackMixer},
+    attackEnv {attackEnv},
     mainMixer {mainMixer}
 {
-  this->note = 0;
-  this->velocity = 0;
+  this->tune = 0;
+  this->attack = 0;
+  this->decay = 0;
+
+  this->releaseWindow = 350;
 }
 
-void Bass::init() {
-  this->pitchDc1.amplitude(0.25);
-  this->pitchEnv1.attack(0);
-  this->pitchEnv1.decay(75);
-  this->pitchEnv1.sustain(0);
-  this->pitchEnv1.release(200);
-  
-  this->osc1.begin(WAVEFORM_TRIANGLE);
-  this->osc1.amplitude(1);
-  this->osc1.frequency(0);
+void BassDrum::init() {
 
-//  float BASS_WAVESHAPE[17] = {
-//    -0.788,
-//    -0.779,
-//    -0.649,
-//    -0.588,
-//    -0.496,
-//    -0.320,
-//    -0.228,
-//    -0.122,
-//    0,
-//    0.122,
-//    0.228,
-//    0.320,
-//    0.496,
-//    0.588,
-//    0.649,
-//    0.779,
-//    0.788
-//  };
-  //this->osc1waveShape.shape(BASS_WAVESHAPE, 17);
-  
-  this->osc1env1.attack(0);
-  this->osc1env1.decay(110);
-  this->osc1env1.sustain(0);
-  this->osc1env1.release(300);
-  this->osc1amp.gain(0.7);
-  
-  this->noise.amplitude(0.01);
-  this->noiseEnv1.attack(5);
-  this->noiseEnv1.decay(150);
-  this->noiseEnv1.sustain(0);
-  this->noiseEnv1.release(180);
+  /**
+   * Drum section
+   */
+   
+  // Tune
+  this->tune = 42; // TODO: get init tune from pot 
 
-  this->mainMixer.gain(0, 1.0);
-  this->mainMixer.gain(1, 0.005);
+  // Drum Pitch Env
+  this->dc.amplitude(0.25);
+  this->pitchEnv.attack(2);
+  this->pitchEnv.decay(40);
+  this->pitchEnv.sustain(0);
+  this->pitchEnv.release(80);
 
-  this->initialized = true;
-}
+  // Drum Osc
+  this->osc.begin(WAVEFORM_TRIANGLE);
+  this->osc.amplitude(0);
+  this->osc.frequency(getMainFreqFromTune());
+  this->oscShaper.shape(CLIPPED_TRI_SHAPE, 9);
+  this->oscFilter.frequency(4000);
 
-void Bass::play() {
-  this->osc1.frequency(noteFreqs[this->note]);
+  // Drum Osc Env (TODO: modulate with Accent?)
+  this->oscEnv.decay(40);
+  this->oscEnv.release(350);
   
-  float velo = (this->velocity * DIV127);
-  this->osc1.amplitude(velo);
+  /**
+   * Attack section
+   */
+  
+  // Pulse DC
+  this->pulseDc.amplitude(0.8);
+
+  // Pulse Envelope
+  this->pulseEnv.attack(1);
+  this->pulseEnv.decay(2);
+  this->pulseEnv.release(3);
+
+  // Pulse Osc
+  this->pulseOsc.begin(WAVEFORM_SINE);
+  this->pulseOsc.amplitude(0.2);
+  this->pulseOsc.frequency(10);
+
+  // Subtle noise
   this->noise.amplitude(0.1);
+  this->noiseFilter.frequency(900);
 
-  this->pitchEnv1.noteOn();
-  this->osc1env1.noteOn();
-  this->noiseEnv1.noteOn();
+  // Attack envelope
+  this->attackEnv.attack(3);
+  this->attackEnv.decay(25);
+  this->attackEnv.release(50);
+  
+  /**
+   * Mix section
+   */
+
+  // Mix together voice and attack
+  this->mainMixer.gain(0, 1);
+  this->mainMixer.gain(1, 1);
+
+  KitInstrument::init();
 }
 
-void Bass::stop() {
-  this->pitchEnv1.noteOff();
-  this->osc1env1.noteOff();
-  this->noiseEnv1.noteOff();
+void BassDrum::trigger(int accent) {
+    KitInstrument::trigger(0); // ignore accent on parent method
+  
+    float amp = map(accent, 1, 2, 5, 10) * 0.1;
+    this->osc.amplitude(amp);
+    
+    this->pulseEnv.noteOn();
+    this->attackEnv.noteOn();
+    this->pitchEnv.noteOn();
+    this->oscEnv.noteOn();
+}
+
+void BassDrum::release() {
+    this->pitchEnv.noteOff();
+    this->oscEnv.noteOff();
+    this->pulseEnv.noteOff();
+    this->attackEnv.noteOff();
+}
+
+void BassDrum::setParameterValues(int paramPot1Val, int paramPot2Val, int paramPot3Val) {
+   this->setTune(paramPot1Val);
+   this->setAttack(paramPot2Val);
+   this->setDecay(paramPot3Val);
+}
+
+void BassDrum::setTune(byte value) {
+  this->tune = map(value, 0, 127, 0, 60);
+
+  this->osc.frequency(getMainFreqFromTune());
+
+  int valCapped = max(50, value);
+  float dcAmt = map(valCapped, 0, 127, 0, 33) * 0.01;  
+  this->dc.amplitude(dcAmt);
+}
+
+void BassDrum::setAttack(byte value) {
+  this->attack = map(value, 0, 127, 50, 100);
+
+  this->mainMixer.gain(1, this->attack * 0.01);
+}
+
+void BassDrum::setDecay(byte value) {
+  this->decay = value;
+
+  int dDecay = min(108, max(96, this->decay));
+  int mapRel = map(this->decay, 0, 127, 0, 400);
+
+  this->oscEnv.decay(dDecay);
+  this->oscEnv.release(mapRel);
+}
+
+float BassDrum::getMainFreqFromTune() {
+  float tuneFreq = map(this->tune, 0, 60, 45, 75);
+  
+  return tuneFreq;
+}
+
+/**
+ * Ratchet methods
+ */
+
+void BassDrum::resetDecay() {
+  if (this->quickDecayModified == false) {
+    return;
+  }
+  
+  this->setDecay(this->decay);
+
+  this->quickDecayModified = false;
+}
+
+void BassDrum::setQuickDecay(int ms) {
+  this->quickDecayModified = true;
+  
+  this->oscEnv.decay(ms+20);
+  this->oscEnv.release(ms+300);
 }

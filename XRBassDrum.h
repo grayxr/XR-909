@@ -1,42 +1,66 @@
+#ifndef XRBassDrum_h
+#define XRBassDrum_h
+
 #include <Audio.h>
 #include <Arduino.h>
 
-class Bass {    
-  public:
-    byte note;
-    byte velocity;
+#include "XRKitInstrument.h"
 
-    bool initialized = false;
+class BassDrum : public KitInstrument {    
+  public:
+    unsigned int position = 0;
+  
+    byte tune;
+    byte attack;
+    byte decay;
     
-    AudioSynthWaveformDc &pitchDc1;
-    AudioEffectEnvelope &pitchEnv1;
-    AudioSynthWaveformModulated &osc1;
-    AudioEffectWaveshaper &osc1waveShape;
-    AudioEffectEnvelope &osc1env1;
-    AudioAmplifier &osc1amp;
+    AudioSynthWaveformDc &dc;
+    AudioEffectEnvelope &pitchEnv;
+    AudioSynthWaveformModulated &osc;
+    AudioEffectWaveshaper &oscShaper;
+    AudioFilterStateVariable &oscFilter;
+    AudioEffectEnvelope &oscEnv;
+    AudioSynthWaveformDc &pulseDc;
+    AudioEffectEnvelope &pulseEnv;
+    AudioSynthWaveformModulated &pulseOsc;
     AudioSynthNoiseWhite &noise;
-    AudioEffectEnvelope &noiseEnv1;
+    AudioFilterStateVariable &noiseFilter;
+    AudioMixer4 &attackMixer;
+    AudioEffectEnvelope &attackEnv;
     AudioMixer4 &mainMixer;
     
-    Bass(
-      AudioSynthWaveformDc &pitchDc1,
-      AudioEffectEnvelope &pitchEnv1,
-      AudioSynthWaveformModulated &osc1,
-      AudioEffectWaveshaper &osc1waveShape,
-      AudioEffectEnvelope &osc1env1,
-      AudioAmplifier &osc1amp,
+    BassDrum(
+      AudioSynthWaveformDc &dc,
+      AudioEffectEnvelope &pitchEnv,
+      AudioSynthWaveformModulated &osc,
+      AudioEffectWaveshaper &oscShaper,
+      AudioFilterStateVariable &oscFilter,
+      AudioEffectEnvelope &oscEnv,
+      AudioSynthWaveformDc &pulseDc,
+      AudioEffectEnvelope &pulseEnv,
+      AudioSynthWaveformModulated &pulseOsc,
       AudioSynthNoiseWhite &noise,
-      AudioEffectEnvelope &noiseEnv1,
+      AudioFilterStateVariable &noiseFilter,
+      AudioMixer4 &attackMixer,
+      AudioEffectEnvelope &attackEnv,
       AudioMixer4 &mainMixer
     );
+
+    void setTune(byte value);
+    void setAttack(byte value);
+    void setDecay(byte value);
+    
+    float getMainFreqFromTune();
+
+    // kit instrument methods
     
     void init();
-    void play();
-    void stop();
+    void trigger(int accent);
+    void release();
 
-    // USB MIDI handlers
-    
-//    virtual void noteOnHandler(byte channel, byte note, byte velocity);
-//    virtual void noteOffHandler(byte channel, byte note, byte velocity);
-//    virtual void ccHandler(byte channel, byte control, byte value);
+    void setParameterValues(int paramPot1Val, int paramPot2Val, int paramPot3Val);
+    void setQuickDecay(int ms);
+    void resetDecay();
 };
+
+#endif /* XRBassDrum_h */

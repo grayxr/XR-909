@@ -1,12 +1,18 @@
 #include <Audio.h>
 #include <Arduino.h>
 
-class Snare {    
-  public:
-    byte note;
-    byte velocity;
+#include "XRKitInstrument.h"
 
-    bool initialized = false;
+extern const int NOISE_MIXER_CHANNEL_LPF;
+extern const int NOISE_MIXER_CHANNEL_HPF;
+extern const int MIXER_CHANNEL_DRUM;
+extern const int MIXER_CHANNEL_NOISE;
+
+class SnareDrum : public KitInstrument {    
+  public:
+    byte tune;
+    byte tone;
+    byte snappy;
     
     AudioSynthWaveformDc &pitchDc1;
     AudioSynthWaveform &pitchOsc1;
@@ -17,15 +23,19 @@ class Snare {
     AudioSynthWaveformModulated &osc2;
     AudioEffectEnvelope &osc1env1;
     AudioEffectEnvelope &osc1env2;
-    AudioAmplifier &osc1amp;
     AudioEffectEnvelope &osc2env1;
     AudioEffectEnvelope &osc2env2;
-    AudioAmplifier &osc2amp;
+    AudioMixer4 &oscMixer;
+    AudioFilterStateVariable &oscFilter;
     AudioSynthNoiseWhite &noise;
+    AudioSynthNoiseWhite &sizzleNoise;
     AudioEffectEnvelope &noiseEnv1;
+    AudioEffectEnvelope &noiseEnv2;
+    AudioFilterBiquad &noiseFilter;
+    AudioMixer4 &noiseMixer;
     AudioMixer4 &mainMixer;
     
-    Snare(
+    SnareDrum(
       AudioSynthWaveformDc &pitchDc1,
       AudioSynthWaveform &pitchOsc1,
       AudioSynthWaveform &pitchOsc2,
@@ -35,22 +45,36 @@ class Snare {
       AudioSynthWaveformModulated &osc2,
       AudioEffectEnvelope &osc1env1,
       AudioEffectEnvelope &osc1env2,
-      AudioAmplifier &osc1amp,
       AudioEffectEnvelope &osc2env1,
       AudioEffectEnvelope &osc2env2,
-      AudioAmplifier &osc2amp,
+      AudioMixer4 &oscMixer,
+      AudioFilterStateVariable &oscFilter,
       AudioSynthNoiseWhite &noise,
+      AudioSynthNoiseWhite &sizzleNoise,
       AudioEffectEnvelope &noiseEnv1,
+      AudioEffectEnvelope &noiseEnv2,
+      AudioFilterBiquad &noiseFilter,
+      AudioMixer4 &noiseMixer,
       AudioMixer4 &mainMixer
     );
     
-    void init();
-    void play();
-    void stop();
-
-    // USB MIDI handlers
+    void setTune(byte value);
+    void setTone(byte value);
+    void setSnappy(byte value);
     
-//    virtual void noteOnHandler(byte channel, byte note, byte velocity);
-//    virtual void noteOffHandler(byte channel, byte note, byte velocity);
-//    virtual void ccHandler(byte channel, byte control, byte value);
+    float getMainFreqFromTune();
+    float getSubFreqFromTune();
+
+    int noiseEnvDecay;
+    int noiseEnvRelease;
+
+    // kit instrument methods
+    
+    void init();
+    void trigger(int accent);
+    void release();
+
+    void setParameterValues(int paramPot1Val, int paramPot2Val, int paramPot3Val);
+    void setQuickDecay(int ms);
+    void resetDecay();
 };
